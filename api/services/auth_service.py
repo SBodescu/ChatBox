@@ -1,38 +1,45 @@
 from db.model import UserRecord
-from fastapi import Depends
+from fastapi import Depends,HTTPException, status
 from sqlalchemy.orm import Session
-from api.schemas.users import UserResponse, UserCreate, UserLogin
-from passlib.context import CryptContext
+from api.schemas.users import  UserCreate, UserLogin
+from utils.password_utils import get_hash_password
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 from db.database import get_db
-from api.config import settings
-from datetime import datetime, timedelta, timezone
-import jwt
-
-SECRET_KEY = settings.SECRET_KEY
-ALGORITHM = settings.ALGORITHM
-ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+from utils.jwt_token_utils import SECRET_KEY, ALGORITHM
+from utils.password_utils import verify_password
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer(auto_error=False)
 
-
-def get_hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def authenticate_user(user: UserLogin, db: Session):
+def get_authenticate_user(user: UserLogin, db: Session):
     auth_user = db.query(UserRecord).filter(UserRecord.email == user.email).first()
     if not auth_user or not verify_password(user.password,auth_user.password_hash):
         return None
     return auth_user
+
+def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security), db: Session = Depends(get_db)) -> UserRecord:
+    if not credentials or credentials.scheme != "Bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization",
+        )
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        user_id = int(user_id)
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    user = db.query(UserRecord).filter(UserRecord.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    return user
 
 def create_user_account(user: UserCreate, db: Session):
     existing_user = db.query(UserRecord).filter(UserRecord.email == user.email).first()
