@@ -1,4 +1,4 @@
-from db.model import UserRecord
+from db.models import UserRecord
 from fastapi import Depends,HTTPException, status
 from sqlalchemy.orm import Session
 from api.schemas.users import  UserCreate, UserLogin
@@ -30,8 +30,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
         if user_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         user_id = int(user_id)
-    except (JWTError, ValueError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    except (JWTError, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token {e}")
 
     user = db.query(UserRecord).filter(UserRecord.id == user_id).first()
     if not user:
