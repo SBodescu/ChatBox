@@ -5,7 +5,11 @@ from sqlalchemy import (
     String,
     ForeignKey,
     func,
+    Index
+    
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.orm import relationship
 
 from db.database import Base
 
@@ -20,8 +24,10 @@ class UserRecord(Base):
     password_hash = Column(String, nullable=True) 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    files = relationship("FileRecord", back_populates="user", cascade="all, delete-orphan")
+
 class FileRecord(Base):
-    __tablename__ = "files_new"
+    __tablename__ = "files"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -31,3 +37,28 @@ class FileRecord(Base):
     content_type = Column(String, nullable=True)
     size = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("UserRecord", back_populates="files")
+    content = relationship(
+        "FileContentRecord",
+        back_populates="file",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class FileContentRecord(Base):
+    __tablename__ = "file_content"
+
+    file_id = Column(Integer, ForeignKey("files.id"), primary_key=True)
+    content_tsv = Column(TSVECTOR, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_file_content_content_tsv",
+            "content_tsv",
+            postgresql_using="gin",
+        ),
+    )
+
+    file = relationship("FileRecord", back_populates="content")

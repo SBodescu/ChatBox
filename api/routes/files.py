@@ -53,5 +53,18 @@ async def get_file_content(file_id: int, current_user: UserRecord = Depends(get_
     content_type, original_file_name, file_path = files_service.get_file_content_by_id(file_id, current_user.id, db)
     return FastAPIFileResponse(path=file_path,media_type=content_type, filename=original_file_name)
 
+@router.delete("/{file_id}")
+def remove_file_by_id(file_id: int, current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_file = files_service.get_file_by_id(file_id, current_user.id, db)
+    if not db_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Filename not found"
+        )
+    db.delete(db_file)
+    db.commit()
+  
+    return f"File with name:{db_file.file_name} removed"
+
 
     

@@ -1,4 +1,4 @@
-from api.config import settings
+from config.settings import settings
 from datetime import datetime, timedelta, timezone
 import jwt
 

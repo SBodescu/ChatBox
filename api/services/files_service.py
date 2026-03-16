@@ -1,26 +1,54 @@
 from fastapi import UploadFile,HTTPException
 from sqlalchemy.orm import Session
-from db.models import UserRecord, FileRecord
+from sqlalchemy import func
+from db.models import UserRecord, FileRecord, FileContentRecord
 from pathlib import Path
 from utils.files_utils import create_file_details
 
-async def create_file_record(file: UploadFile, current_user: UserRecord, db: Session):
-
+async def store_file(file: UploadFile,current_user: UserRecord):
     original_file_name, file_name, dir_path = create_file_details(current_user.id, file)
 
     content = await file.read()
     dir_path.write_bytes(content)
 
+    return {
+        "filename": original_file_name,
+        "generated_file_name": file_name,
+        "content_type": file.content_type or "application/octet-stream",
+        "size": len(content),
+        "path": str(dir_path),
+        "raw_bytes": content,
+    }
+
+
+async def create_file_record(file: UploadFile, current_user: UserRecord, db: Session):
+    stored =  await store_file(file,current_user)
+
     db_file = FileRecord(
         user_id=current_user.id,
-        original_file_name = original_file_name,
-        file_name=file_name,
-        file_path=str(dir_path),
-        content_type=file.content_type or "application/octet-stream",
-        size=len(content)
+        original_file_name = stored["filename"],
+        file_name=stored["generated_file_name"],
+        file_path= stored["path"],
+        content_type=stored["content_type"],
+        size=stored["size"]
     )
 
     db.add(db_file)
+    db.commit()
+    db.refresh(db_file)
+
+    raw_bytes = stored.get("raw_bytes", b"")
+    try:
+        text_content = raw_bytes.decode("utf-8", errors="ignore")
+    except Exception:
+        text_content = ""
+    if text_content:
+        content_record = FileContentRecord(
+            file_id = db_file.id,
+            content_tsv = func.to_tsvector("english", text_content),
+        )
+        db.add(content_record)
+
     db.commit()
     db.refresh(db_file)
 
