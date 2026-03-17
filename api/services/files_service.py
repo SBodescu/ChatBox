@@ -60,9 +60,18 @@ def get_files_for_user(user_id: int, db: Session):
 def get_file_by_id(file_id: int,user_id: int,  db: Session):
     return db.query(FileRecord).filter(FileRecord.id == file_id, FileRecord.user_id == user_id).first()
 
-def get_file_content_by_id(file_id: int,user_id: int,  db: Session):
+def get_file_record_by_id(file_id: int,user_id: int,  db: Session):
     db_file = get_file_by_id(file_id, user_id, db)
     file_path = Path(db_file.file_path)
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
     return [db_file.content_type, db_file.original_file_name, file_path]
+
+def search_files_by_content(query_word: str, user_id: int, db: Session):
+    file_ids = db.query(FileContentRecord.file_id).join(
+        FileRecord, FileContentRecord.file_id == FileRecord.id
+    ).filter(
+        FileRecord.user_id == user_id,
+        FileContentRecord.content_tsv.match(query_word) 
+    ).all()
+    return [file.file_id for file in file_ids]

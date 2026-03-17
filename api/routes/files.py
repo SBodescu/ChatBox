@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Query
 from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,15 @@ async def upload_file(
     )
     return FileResponse.model_validate(saved_file)
 
+@router.get("/search",response_model=list[FileResponse])
+def search_files(query_word: str,current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db) ):
+    if not query_word:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+    file_ids = files_service.search_files_by_content(query_word, current_user.id, db)
+    result = [files_service.get_file_by_id(file_id,current_user.id,db) for file_id in file_ids]
+    return [FileResponse.model_validate(f) for f in result]
+
+
 @router.get("/{file_id}", response_model=FileResponse)
 def get_file(file_id: int, current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db)):
     db_file = files_service.get_file_by_id(file_id, current_user.id, db)
@@ -50,7 +59,7 @@ def get_files_by_user_id(current_user: UserRecord = Depends(get_current_user),db
 
 @router.get("/{file_id}/content", response_class=FastAPIFileResponse)
 async def get_file_content(file_id: int, current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db) ):
-    content_type, original_file_name, file_path = files_service.get_file_content_by_id(file_id, current_user.id, db)
+    content_type, original_file_name, file_path = files_service.get_file_record_by_id(file_id, current_user.id, db)
     return FastAPIFileResponse(path=file_path,media_type=content_type, filename=original_file_name)
 
 @router.delete("/{file_id}")
