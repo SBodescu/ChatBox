@@ -15,3 +15,5 @@ wheels/
 chatbox.db
 
 files/
+
+.DS_Store

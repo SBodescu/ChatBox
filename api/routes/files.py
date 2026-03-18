@@ -30,14 +30,37 @@ async def upload_file(
     )
     return FileResponse.model_validate(saved_file)
 
-@router.get("/search",response_model=list[FileResponse])
-def search_files(query_word: str,current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db) ):
+@router.get("/search")
+def search_files(query_word: str, limit: int = 20, offset: int = 0,current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db) ):
+    query_word = (query_word or "").strip()
     if not query_word:
         raise HTTPException(status_code=400, detail="Query parameter is required")
-    file_ids = files_service.search_files_by_content(query_word, current_user.id, db)
-    result = [files_service.get_file_by_id(file_id,current_user.id,db) for file_id in file_ids]
-    return [FileResponse.model_validate(f) for f in result]
+    
+    limit = max(1,min(limit,100))
+    offset = max(0, offset)
 
+    results = files_service.search_files_by_tsv_content(query_word, current_user.id, db, limit, offset)
+    return { "query": query_word,
+            "limit" : limit,
+            "offset" : offset,
+            "results" : results
+            }
+
+@router.get("/search-embeddings")
+def search_files(query_word: str, limit: int = 20, offset: int = 0,current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db) ):
+    query_word = (query_word or "").strip()
+    if not query_word:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+    
+    limit = max(1,min(limit,100))
+    offset = max(0, offset)
+
+    results = files_service.search_files_by_embedded_content(query_word, current_user.id, db, limit, offset)
+    return { "query": query_word,
+            "limit" : limit,
+            "offset" : offset,
+            "results" : results
+            }
 
 @router.get("/{file_id}", response_model=FileResponse)
 def get_file(file_id: int, current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db)):

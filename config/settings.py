@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
+    voyage_api_key: str
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()

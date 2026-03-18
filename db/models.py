@@ -10,7 +10,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
-
+from pgvector.sqlalchemy import Vector
 from db.database import Base
 
 class UserRecord(Base):
@@ -50,13 +50,15 @@ class FileRecord(Base):
 class FileContentRecord(Base):
     __tablename__ = "file_content"
 
-    file_id = Column(Integer, ForeignKey("files.id"), primary_key=True)
-    content_tsv = Column(TSVECTOR, nullable=False)
+    file_id = Column(Integer, ForeignKey("files.id"))
+    chunk_id = Column(Integer,primary_key=True, index =True )
+    chunk_content_tsv = Column(TSVECTOR, nullable=False)
+    chunk_content_pv = Column(Vector(2048), nullable=False)
 
     __table_args__ = (
         Index(
             "ix_file_content_content_tsv",
-            "content_tsv",
+            "chunk_content_tsv",
             postgresql_using="gin",
         ),
     )
