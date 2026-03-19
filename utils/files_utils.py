@@ -1,13 +1,9 @@
 from pathlib import Path
 from fastapi import File, UploadFile
 import uuid
-import voyageai
 import re 
 from config.settings import settings
-
-UPLOAD_DIR = Path("files")
-
-client = voyageai.Client(api_key = settings.voyage_api_key)
+from utils.llm_utils import embed
 
 def generate_file_name(file_name: str):
     
@@ -22,16 +18,11 @@ def generate_file_name(file_name: str):
 def create_file_details(user_id: int,file: UploadFile = File(...)):
     safe_name = Path(file.filename).name
     generated_name = generate_file_name(safe_name)
-    user_dir = UPLOAD_DIR / str(user_id)
+    user_dir = Path(settings.UPLOAD_DIR)/ str(user_id)
     user_dir.mkdir(parents=True, exist_ok=True)
     dest = user_dir / generated_name
 
     return safe_name,generated_name,dest
-
-
-def embed(text: list[str], model: str = "voyage-4"):
-    result = client.embed(text, model = model, output_dimension = 2048)
-    return result.embeddings
 
 def chunk_by_sentence(text: str, max_sentences_per_chunk: int = 3, overlap_sentences: int = 1):
     sentences = re.split(r"(?<=[.!?])\s+", text.strip())
@@ -67,3 +58,29 @@ def chunk_and_embed_by_file_type(text: str, content_type: str):
         
     return results
         
+
+def rrf_ranking(embedding_results: list[dict], tsv_results: list[dict], k:int = 60):
+    rrf_results = {}
+    for rank, item in enumerate(embedding_results, start=1):
+        file_id = item["file"]["id"]
+        if file_id not in rrf_results:
+            rrf_results[file_id] = {"score": 0.0, "file": item["file"],"best_chunk": item["best_chunk"], "min_rank": rank}
+        
+        rrf_results[file_id]["score"] += 1.0 / (k + rank)
+    
+    for rank, item in enumerate(tsv_results, start=1):
+        file_id = item["file"]["id"]
+        if file_id not in rrf_results:
+            rrf_results[file_id] = {"score": 0.0, "file": item["file"],"best_chunk": item["best_chunk"], "min_rank": rank}
+        else:
+            if rank< rrf_results[file_id]["min_rank"]:
+                rrf_results[file_id]["best_chunk"] = item["best_chunk"]
+                rrf_results[file_id]["min_rank"] = rank
+        
+        rrf_results[file_id]["score"] += 1.0 / (k + rank)
+
+    final_ranked = sorted(rrf_results.values(), key=lambda x: x["score"], reverse=True)
+    for item in final_ranked:
+        item.pop("min_rank", None)
+    
+    return final_ranked

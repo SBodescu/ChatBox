@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from db.models import UserRecord, FileRecord, FileContentRecord
 from pathlib import Path
-from utils.files_utils import create_file_details, chunk_and_embed_by_file_type, embed
+from utils.files_utils import create_file_details, chunk_and_embed_by_file_type, rrf_ranking
+from utils.llm_utils import embed
 
 async def store_file(file: UploadFile,current_user: UserRecord):
     original_file_name, file_name, dir_path = create_file_details(current_user.id, file)
@@ -47,6 +48,7 @@ async def create_file_record(file: UploadFile, current_user: UserRecord, db: Ses
         for chunk in chunks_data:
             content_record = FileContentRecord(
                 file_id = db_file.id,
+                chunk_content = chunk["chunk_text"],
                 chunk_content_tsv = func.to_tsvector("english", chunk["chunk_text"]),
                 chunk_content_pv=chunk["embedding"]
             )
@@ -78,7 +80,7 @@ def search_files_by_tsv_content(query_word: str, user_id: int, db: Session , lim
     tsquery = func.websearch_to_tsquery("english", query_word)
     rank = func.ts_rank_cd(FileContentRecord.chunk_content_tsv, tsquery).label("rank")
 
-    chunks = (db.query(FileRecord, rank)
+    chunks = (db.query(FileRecord, rank, FileContentRecord.chunk_content)
                 .join(FileContentRecord, FileContentRecord.file_id == FileRecord.id)
                 .filter(FileRecord.user_id == user_id)
                 .filter(FileContentRecord.chunk_content_tsv.op("@@")(tsquery))
@@ -91,13 +93,14 @@ def search_files_by_tsv_content(query_word: str, user_id: int, db: Session , lim
      
     unique_results: list[dict] = []
     seen_file_ids = set()
-    for file_record, file_rank in chunks:
+    for file_record, file_rank, chunk_content in chunks:
         if file_record.id in seen_file_ids:
             continue
         seen_file_ids.add(file_record.id)
         unique_results.append(
             {
                 "rank" : float(file_rank or 0.0),
+                "best_chunk" : chunk_content,
                 "file" : {
                     "id" : file_record.id ,
                     "original_name" : file_record.original_file_name,
@@ -124,7 +127,7 @@ def search_files_by_embedded_content(query_word: str, user_id: int, db: Session 
     query_vector = embed([query_word])[0]
     rank = FileContentRecord.chunk_content_pv.cosine_distance(query_vector).label("distance")
 
-    chunks = (db.query(FileRecord, rank)
+    chunks = (db.query(FileRecord, rank, FileContentRecord.chunk_content)
                 .join(FileContentRecord, FileContentRecord.file_id == FileRecord.id)
                 .filter(FileRecord.user_id == user_id)
                 .order_by(rank.asc()) 
@@ -134,7 +137,7 @@ def search_files_by_embedded_content(query_word: str, user_id: int, db: Session 
      
     unique_results: list[dict] = []
     seen_file_ids = set()
-    for file_record, file_rank in chunks:
+    for file_record, file_rank, chunk_content in chunks:
         if file_record.id in seen_file_ids:
             continue
         seen_file_ids.add(file_record.id)
@@ -142,6 +145,7 @@ def search_files_by_embedded_content(query_word: str, user_id: int, db: Session 
         unique_results.append(
             {
                 "rank" : float(similarity),
+                "best_chunk" : chunk_content,
                 "file" : {
                     "id" : file_record.id ,
                     "original_name" : file_record.original_file_name,
@@ -152,7 +156,7 @@ def search_files_by_embedded_content(query_word: str, user_id: int, db: Session 
                     "created_at" : file_record.created_at,
                     "path" : file_record.file_path
                 },
-            }
+            }  
         )
 
 
@@ -160,3 +164,10 @@ def search_files_by_embedded_content(query_word: str, user_id: int, db: Session 
     end = offset + limit
     return unique_results[start:end]
 
+def search_files_content_hybrid(query_word: str, user_id: int, db: Session , limit: int = 20, offset: int = 0):
+    embedding_results = search_files_by_embedded_content(query_word,user_id,db,limit,offset)
+    tsv_results = search_files_by_tsv_content(query_word,user_id,db,limit,offset)
+
+    final_results = rrf_ranking(embedding_results,tsv_results)
+
+    return final_results

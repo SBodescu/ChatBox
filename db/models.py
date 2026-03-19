@@ -52,6 +52,7 @@ class FileContentRecord(Base):
 
     file_id = Column(Integer, ForeignKey("files.id"))
     chunk_id = Column(Integer,primary_key=True, index =True )
+    chunk_content = Column(String, nullable=False)
     chunk_content_tsv = Column(TSVECTOR, nullable=False)
     chunk_content_pv = Column(Vector(2048), nullable=False)
 

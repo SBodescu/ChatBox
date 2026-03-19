@@ -18,4 +18,5 @@ dependencies = [
     "numpy>=2.4.3",
     "pgvector>=0.4.2",
     "pyjwt>=2.12.1",
+    "groq>=1.1.1",
 ]

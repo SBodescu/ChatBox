@@ -30,6 +30,23 @@ async def upload_file(
     )
     return FileResponse.model_validate(saved_file)
 
+@router.get("/search-hybrid")
+def search_files(query_word: str, limit: int = 20, offset: int = 0,current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db) ):
+    query_word = (query_word or "").strip()
+    if not query_word:
+        raise HTTPException(status_code=400, detail="Query parameter is required")
+    
+    limit = max(1,min(limit,100))
+    offset = max(0, offset)
+
+    results = files_service.search_files_content_hybrid(query_word, current_user.id, db, limit, offset)
+    return { "query": query_word,
+            "limit" : limit,
+            "offset" : offset,
+            "results" : results
+            }
+
+
 @router.get("/search")
 def search_files(query_word: str, limit: int = 20, offset: int = 0,current_user: UserRecord = Depends(get_current_user), db: Session = Depends(get_db) ):
     query_word = (query_word or "").strip()
