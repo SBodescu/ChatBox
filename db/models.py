@@ -4,6 +4,7 @@ from sqlalchemy import (
     Integer,
     String,
     ForeignKey,
+    Text,
     func,
     Index
     
@@ -65,3 +66,13 @@ class FileContentRecord(Base):
     )
 
     file = relationship("FileRecord", back_populates="content")
+
+
+class MessageRecord(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    role = Column(String) 
+    content = Column(Text) 
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

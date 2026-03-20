@@ -14,7 +14,7 @@ async def ask_question(
     db: Session = Depends(get_db), 
     current_user = Depends(get_current_user)
 ):
-    answer, sources = llm_service.get_answer_from_db(query, current_user.id, db)
+    answer, sources = llm_service.get_answer_from_agent(query, current_user.id, db)
     return LlmResponse.model_validate({
         "question": query,
         "answer": answer,
